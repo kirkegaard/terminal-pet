@@ -2,9 +2,9 @@ package ssh
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	bm "github.com/charmbracelet/wish/bubbletea"
+	"time"
 )
 
 // Our bubble tea session handler
@@ -18,7 +18,6 @@ func SessionHandler(s ssh.Session) *tea.Program {
 
 	renderer := bm.MakeRenderer(s)
 
-	log.Info("Creating UI")
 	m := NewUI(ctx, renderer, pty.Window.Width, pty.Window.Height)
 
 	opts := bm.MakeOptions(s)
@@ -27,9 +26,14 @@ func SessionHandler(s ssh.Session) *tea.Program {
 		tea.WithContext(ctx),
 	)
 
-	log.Info("Creating program")
 	p := tea.NewProgram(m, opts...)
 
-	log.Info("Returning program")
+	go func() {
+		for {
+			<-time.After(1 * time.Second)
+			p.Send(timeMsg(time.Now()))
+		}
+	}()
+
 	return p
 }

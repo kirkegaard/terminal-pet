@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	// "github.com/charmbracelet/ssh"
 )
 
 type timeMsg time.Time
@@ -24,6 +23,7 @@ func NewUI(ctx context.Context, renderer *lipgloss.Renderer, width int, height i
 		Renderer: renderer,
 		width:    width,
 		height:   height,
+		time:     time.Now(),
 	}
 
 	return ui
