@@ -34,7 +34,9 @@ const (
 var world *World
 
 func main() {
-	// Create a new world
+	// Start up the world of pets
+	// @TODO In case of a crash we can recover the world state
+	log.Info("Starting world")
 	startTime := time.Now()
 	world = NewWorld(startTime)
 
