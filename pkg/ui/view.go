@@ -1,78 +1,15 @@
 package main
 
-// An example Bubble Tea server. This will put an ssh session into alt screen
-// and continually print up to date terminal information.
-
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
-	"github.com/charmbracelet/wish/activeterm"
-	"github.com/charmbracelet/wish/bubbletea"
-	"github.com/charmbracelet/wish/logging"
 )
-
-const (
-	host = "localhost"
-	port = "23234"
-)
-
-var world *World
-
-func main() {
-	// Start up the world of pets
-	// @TODO In case of a crash we can recover the world state
-	log.Info("Starting world")
-	startTime := time.Now()
-	world = NewWorld(startTime)
-
-	// Start the SSH server
-	s, err := wish.NewServer(
-		wish.WithAddress(net.JoinHostPort(host, port)),
-		wish.WithHostKeyPath(".ssh/id_ed25519"),
-		wish.WithMiddleware(
-			bubbletea.Middleware(teaHandler),
-			activeterm.Middleware(), // Bubble Tea apps usually require a PTY.
-			logging.Middleware(),
-		),
-	)
-	if err != nil {
-		log.Error("Could not start server", "error", err)
-	}
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-
-	log.Info("Starting SSH server", "host", host, "port", port)
-	go func() {
-		if err = s.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-			log.Error("Could not start server", "error", err)
-			done <- nil
-		}
-	}()
-
-	<-done
-	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer func() { cancel() }()
-	if err := s.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-		log.Error("Could not stop server", "error", err)
-	}
-}
 
 func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	pty, _, _ := s.Pty()
@@ -86,7 +23,6 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	m := model{
 		width:     pty.Window.Width,
 		height:    pty.Window.Height,
-		world:     world,
 		choices:   []string{"Feed", "Toggle Lights", "Play", "Medicine", "Clean", "Stats", "Discipline", "Status"},
 		selected:  make(map[int]struct{}),
 		textInput: ti,
@@ -105,7 +41,6 @@ type (
 type model struct {
 	width     int
 	height    int
-	world     *World
 	cursor    int
 	selected  map[int]struct{}
 	choices   []string
@@ -160,7 +95,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var output string
 
-	output = fmt.Sprintf("World time: %s\n", m.world.time.String())
+	// output = fmt.Sprintf("World time: %s\n", m.world.time.String())
 
 	output += fmt.Sprintf(
 		"What’s your pets name?\n\n%s",

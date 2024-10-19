@@ -1,6 +1,7 @@
-package main
+package world
 
 import (
+	"github.com/charmbracelet/log"
 	"time"
 )
 
@@ -11,6 +12,8 @@ type World struct {
 }
 
 func NewWorld(startTime time.Time) *World {
+	log.Info("Starting world")
+
 	w := &World{
 		time:     startTime,
 		ticker:   time.NewTicker(time.Millisecond),
