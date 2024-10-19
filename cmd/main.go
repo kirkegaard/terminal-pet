@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/log"
 	cssh "github.com/charmbracelet/ssh"
 
+	"github.com/kirkegaard/terminal-pet/pkg/config"
 	"github.com/kirkegaard/terminal-pet/pkg/db"
 	"github.com/kirkegaard/terminal-pet/pkg/ssh"
 	"github.com/kirkegaard/terminal-pet/pkg/world"
@@ -28,29 +29,37 @@ type Server struct {
 	SSHServer *ssh.SSHServer
 	World     *world.World
 	DB        *db.DB
+	Config    *config.Config
 	logger    *log.Logger
 	ctx       context.Context
 }
 
-func NewServer() (*Server, error) {
+func NewServer(ctx context.Context) (*Server, error) {
 	var err error
 
-	// @TODO Figure out how we can use context to set configuration here
-	s := &Server{}
+	cfg := config.FromContext(ctx)
 
-	// Add database
-	// @TODO Get configuration from shared context
-	s.DB, err = db.Open(dbDriverName, dbDSN)
+	// Open database connection
+	dbx, err := db.Open(ctx, cfg.DB.Driver, cfg.DB.DataSource)
 	if err != nil {
+		log.Info("Could not open database", "error", err)
 		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	// Add db to context
+	ctx = db.WithContext(ctx, dbx)
+
+	s := &Server{
+		Config: cfg,
+		DB:     dbx,
+		ctx:    ctx,
 	}
 
 	// Add world
 	s.World = world.NewWorld(time.Now())
 
 	// Add ssh server
-	// @TODO Get configuration from shared context
-	s.SSHServer, err = ssh.NewSSHServer(sshHost, sshPort)
+	s.SSHServer, err = ssh.NewSSHServer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create ssh server: %w", err)
 	}
@@ -59,7 +68,18 @@ func NewServer() (*Server, error) {
 }
 
 func main() {
-	s, err := NewServer()
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+
+	// @TODO Add a way to load config from file. Basically like this
+	// if err := cfg.ParseEnv(); err != nil {
+	//  log.Fatal("Could not parse env", "error", err)
+	// }
+
+	// Set the config in the context
+	ctx = config.WithContext(ctx, cfg)
+
+	s, err := NewServer(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -4,10 +4,15 @@ import (
 	"context"
 	"net"
 
+	"github.com/kirkegaard/terminal-pet/pkg/config"
+	"github.com/kirkegaard/terminal-pet/pkg/db"
+
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
-	"github.com/charmbracelet/wish/logging"
+	bm "github.com/charmbracelet/wish/bubbletea"
+	// "github.com/charmbracelet/wish/logging"
+	"github.com/muesli/termenv"
 )
 
 var users = map[string]string{}
@@ -17,42 +22,26 @@ type SSHServer struct {
 }
 
 // Server is the SSH Server
-func NewSSHServer(host string, port string) (*SSHServer, error) {
+func NewSSHServer(ctx context.Context) (*SSHServer, error) {
 	var err error
+
+	cfg := config.FromContext(ctx)
+	dbx := db.FromContext(ctx)
+
+	log.Info("Database", "dbx", dbx)
+
 	s := &SSHServer{}
 
-	opt := []ssh.Option{
-		wish.WithAddress(net.JoinHostPort(host, port)),
-		wish.WithHostKeyPath(".ssh/id_ed25519"),
-		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
-			// @TODO Look up the user in the database. If the user is not found,
-			// create a new user.
-			for _, pubkey := range users {
-				parsed, _, _, _, _ := ssh.ParseAuthorizedKey(
-					[]byte(pubkey),
-				)
+	mw := []wish.Middleware{
+		// BubbleTea middleware
+		bm.MiddlewareWithProgramHandler(SessionHandler, termenv.ANSI256),
+	}
 
-				// User is found
-				if ssh.KeysEqual(key, parsed) {
-					log.Info("User found", "user", ctx.User())
-					return true
-				} else {
-					log.Info("User not found", "user", ctx.User())
-					// Create user
-					return false
-				}
-			}
-			// Worst case we didnt find the user or could not create a new user
-			return false
-		}),
-		wish.WithMiddleware(
-			logging.Middleware(),
-			func(next ssh.Handler) ssh.Handler {
-				return func(sess ssh.Session) {
-					log.Info("New session", "user", sess.User(), "remote", sess.RemoteAddr())
-				}
-			},
-		),
+	opt := []ssh.Option{
+		wish.WithAddress(cfg.SSH.ListenAddr),
+		wish.WithHostKeyPath(".ssh/id_ed25519"),
+		wish.WithPublicKeyAuth(PublicKeyHandler),
+		wish.WithMiddleware(mw...),
 	}
 
 	s.server, err = wish.NewServer(opt...)
@@ -62,6 +51,10 @@ func NewSSHServer(host string, port string) (*SSHServer, error) {
 	}
 
 	return s, nil
+}
+
+func PublicKeyHandler(ctx ssh.Context, pk ssh.PublicKey) (allowed bool) {
+	return true
 }
 
 // ListenAndServe starts the SSH server.

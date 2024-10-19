@@ -1,23 +1,27 @@
 package db
 
 import (
+	"context"
+
+	// "github.com/kirkegaard/terminal-pet/pkg/db/models"
+
 	"github.com/charmbracelet/log"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type DB struct {
-	db     *sqlx.DB
+	*sqlx.DB
 	logger *log.Logger
 }
 
-func Open(driverName string, dsn string) (*DB, error) {
-	db, err := sqlx.Connect(driverName, dsn)
+func Open(ctx context.Context, driverName string, dsn string) (*DB, error) {
+	db, err := sqlx.ConnectContext(ctx, driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	d := &DB{db: db}
+	d := &DB{DB: db}
 
 	d.createUserTable()
 
@@ -25,7 +29,7 @@ func Open(driverName string, dsn string) (*DB, error) {
 }
 
 func (d *DB) Close() {
-	d.db.Close()
+	d.Close()
 }
 
 func (d *DB) createUserTable() {
@@ -36,5 +40,20 @@ func (d *DB) createUserTable() {
       public_key TEXT NOT NULL
     )
   `
-	d.db.MustExec(schema)
+	d.MustExec(schema)
+}
+
+func (d *DB) FindUserByPublicKey(key string) (bool, error) {
+	var count int
+	err := d.Get(&count, "SELECT COUNT(*) FROM users WHERE public_key = ?", key)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+func (d *DB) CreateUser() error {
+	log.Info("Creating user")
+	return nil
 }
