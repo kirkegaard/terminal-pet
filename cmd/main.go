@@ -15,7 +15,6 @@ import (
 	"github.com/kirkegaard/terminal-pet/pkg/config"
 	"github.com/kirkegaard/terminal-pet/pkg/db"
 	"github.com/kirkegaard/terminal-pet/pkg/ssh"
-	"github.com/kirkegaard/terminal-pet/pkg/world"
 )
 
 var (
@@ -27,7 +26,6 @@ var (
 
 type Server struct {
 	SSHServer *ssh.SSHServer
-	World     *world.World
 	DB        *db.DB
 	Config    *config.Config
 	logger    *log.Logger
@@ -38,28 +36,47 @@ func NewServer(ctx context.Context) (*Server, error) {
 	var err error
 
 	cfg := config.FromContext(ctx)
+	if cfg == nil {
+		log.Fatal("Config not found in context")
+	}
+
+	log.Info("Setting up database", "driver", cfg.DB.Driver, "data_source", cfg.DB.DataSource)
+
+	// Create directory for database
+	dbDir := "./tmp"
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return nil, fmt.Errorf("create database directory: %w", err)
+	}
 
 	// Open database connection
 	dbx, err := db.Open(ctx, cfg.DB.Driver, cfg.DB.DataSource)
 	if err != nil {
-		log.Info("Could not open database", "error", err)
+		log.Error("Could not open database", "error", err)
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// Add db to context
-	ctx = db.WithContext(ctx, dbx)
+	// Verify database connection
+	if err := dbx.Ping(); err != nil {
+		log.Error("Database ping failed", "error", err)
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+
+	// Initialize database schema
+	if err := dbx.CreateTables(ctx); err != nil {
+		log.Error("Could not create database tables", "error", err)
+		return nil, fmt.Errorf("create database tables: %w", err)
+	}
+
+	// Create a new context with the database
+	dbCtx := db.WithContext(ctx, dbx)
 
 	s := &Server{
 		Config: cfg,
 		DB:     dbx,
-		ctx:    ctx,
+		ctx:    dbCtx,
 	}
 
-	// Add world
-	s.World = world.NewWorld(time.Now())
-
-	// Add ssh server
-	s.SSHServer, err = ssh.NewSSHServer(ctx)
+	s.SSHServer, err = ssh.NewSSHServer(dbCtx)
 	if err != nil {
 		return nil, fmt.Errorf("create ssh server: %w", err)
 	}
@@ -68,17 +85,19 @@ func NewServer(ctx context.Context) (*Server, error) {
 }
 
 func main() {
-	ctx := context.Background()
-	cfg := config.DefaultConfig()
+	// Set up logging
+	log.SetLevel(log.DebugLevel)
 
-	// @TODO Add a way to load config from file. Basically like this
-	// if err := cfg.ParseEnv(); err != nil {
-	//  log.Fatal("Could not parse env", "error", err)
-	// }
+	// Create base context
+	ctx := context.Background()
+
+	// Load configuration
+	cfg := config.DefaultConfig()
 
 	// Set the config in the context
 	ctx = config.WithContext(ctx, cfg)
 
+	// Create server
 	s, err := NewServer(ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -87,11 +106,9 @@ func main() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-	// @TODO Add more servers like api, websockets, admin, etc.
-	// @TODO Look into errgroup for handling multiple servers
 	// @TODO Add a way to gracefully shutdown all servers
-
-	log.Info("Starting SSH server", "host", sshHost, "port", sshPort)
+	log.Info("Starting SSH server", "address", s.Config.SSH.ListenAddr)
+	log.Info("Connect using:", "command", fmt.Sprintf("ssh localhost -p %s", s.Config.SSH.ListenAddr[10:]))
 	go func() {
 		if err = s.SSHServer.ListenAndServe(); err != nil && !errors.Is(err, cssh.ErrServerClosed) {
 			log.Error("Could not start server", "error", err)

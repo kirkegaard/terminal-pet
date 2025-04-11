@@ -1,5 +1,9 @@
 package config
 
+import (
+	env "github.com/caarlos0/env/v11"
+)
+
 type SSHConfig struct {
 	ListenAddr string `env:"LISTEN_ADDR"`
 	PublicURL  string `env:"PUBLIC_URL"`
@@ -18,7 +22,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		SSH: SSHConfig{
-			ListenAddr: "localhost:23234",
+			ListenAddr: "0.0.0.0:23234",
 			PublicURL:  "ssh://localhost:23234",
 		},
 		DB: DBConfig{
@@ -26,4 +30,8 @@ func DefaultConfig() *Config {
 			DataSource: "./tmp/terminal-pet.db",
 		},
 	}
+}
+
+func ParseEnv(cfg *Config) error {
+	return env.Parse(cfg)
 }

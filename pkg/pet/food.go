@@ -1,4 +1,4 @@
-package main
+package pet
 
 type Food struct {
 	Name   string
@@ -16,10 +16,10 @@ func NewFood(name string, weight int, health int, hunger int) *Food {
 	}
 }
 
-func Burger() (cake *Food) {
-	return NewFood("Burger", 1, 10, 10)
+func Burger() (food *Food) {
+	return NewFood("Burger", 1, 10, 30)
 }
 
-func Cake() (cake *Food) {
-	return NewFood("Cake", 10, 0, 0)
+func Cake() (food *Food) {
+	return NewFood("Cake", 10, 0, 20)
 }
