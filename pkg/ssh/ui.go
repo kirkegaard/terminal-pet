@@ -99,6 +99,12 @@ func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case petui.QuitMsg:
+		// Handle the custom quit message from the pet UI
+		log.Info("Received quit request from menu")
+		ui.syncPetState()
+		return ui, tea.Quit
+
 	default:
 		ui.petUI, cmd = ui.petUI.Update(msg)
 
@@ -126,6 +132,7 @@ func (ui *UI) syncPetState() {
 		"health", ui.currentPet.Health,
 		"is_sick", ui.currentPet.IsSick,
 		"has_pooped", ui.currentPet.HasPooped,
+		"lights_on", ui.currentPet.LightsOn,
 		"is_dead", ui.currentPet.Health <= 0)
 
 	petRepo := repo.NewPetRepository(nil)

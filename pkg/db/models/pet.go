@@ -14,6 +14,7 @@ type Pet struct {
 	Weight     int       `db:"weight"`
 	IsSick     bool      `db:"is_sick"`
 	HasPooped  bool      `db:"has_pooped"`
+	LightsOn   bool      `db:"lights_on"`
 	CreatedAt  time.Time `db:"created_at"`
 	UpdatedAt  time.Time `db:"updated_at"`
 }

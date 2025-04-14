@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"sync"
+
 	// "github.com/kirkegaard/terminal-pet/pkg/db/models"
 	"github.com/charmbracelet/log"
 	"github.com/jmoiron/sqlx"
@@ -76,6 +77,7 @@ func (d *DB) CreateTables(ctx context.Context) error {
 			weight INTEGER NOT NULL DEFAULT 0,
 			is_sick BOOLEAN NOT NULL DEFAULT 0,
 			has_pooped BOOLEAN NOT NULL DEFAULT 0,
+			lights_on BOOLEAN NOT NULL DEFAULT 1,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (parent_id) REFERENCES users(id)

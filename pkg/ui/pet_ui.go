@@ -18,6 +18,9 @@ import (
 	"github.com/kirkegaard/terminal-pet/pkg/ui/views"
 )
 
+// QuitMsg is a custom message used to signal a quit request from the menu
+type QuitMsg struct{}
+
 type FrameMsg time.Time
 
 const (
@@ -232,10 +235,8 @@ func (m *PetUI) updateAnimation(now time.Time) {
 	// Process animation state transitions based on current state
 	switch m.animState {
 	case "idle":
-		// When idle, use the animation based on pet state
 		newAnim := ascii.GetAnimationForState(m.pet.GetState())
 
-		// Only change animation if it's different
 		if newAnim.Name != m.currentAnim.Name {
 			m.currentAnim = newAnim
 			m.currentFrame = 0
@@ -243,39 +244,72 @@ func (m *PetUI) updateAnimation(now time.Time) {
 		}
 
 	case "eating", "cakeEating":
-		// Stay in eating animation for one cycle
 		if m.frameCounter >= len(m.currentAnim.Frames) {
 			m.resetToIdle()
 		}
 
 	case "happy", "sad":
-		// These are reaction states triggered by events (not from pet stats)
-		// Stay in happy/sad animation for two cycles then return to idle
 		if m.frameCounter >= len(m.currentAnim.Frames)*2 {
 			m.resetToIdle()
 		}
 
 	case "playing":
 		// Playing animation is handled by game logic
-		// This state is only changed by game-related actions
 
 	case "dead":
-		// Dead is a terminal state, no transitions
 		m.currentAnim = ascii.GetAnimationForState(ascii.StateDead)
 	}
 
-	// Update frame counter and advance to next frame
 	if len(m.currentAnim.Frames) > 0 {
 		m.currentFrame = (m.currentFrame + 1) % len(m.currentAnim.Frames)
 		m.frameCounter++
 	}
 }
 
-// Update handles messages and updates the model
+func (m *PetUI) handlePetMovement() {
+	// Only move the pet in these states
+	canMove := m.currentAnim.Name == "Idle" || m.currentAnim.Name == "Happy"
+
+	if !canMove || m.pet.IsDead() {
+		if m.petPosition > 0 {
+			m.petPosition--
+		} else if m.petPosition < 0 {
+			m.petPosition++
+		}
+		return
+	}
+
+	if m.moveDirection == 0 {
+		if rand.Intn(2) == 0 {
+			m.moveDirection = 1
+		} else {
+			m.moveDirection = -1
+		}
+	}
+
+	// Movement is determined by a simple sine wave pattern
+	// We'll change our position every 3 frames
+	if m.frameCounter%3 == 0 {
+		if rand.Intn(10) == 0 {
+			m.moveDirection *= -1
+		}
+
+		m.petPosition += m.moveDirection
+
+		if m.petPosition > 3 {
+			m.petPosition = 3
+			m.moveDirection = -1
+		} else if m.petPosition < -3 {
+			m.petPosition = -3
+			m.moveDirection = 1
+		}
+	}
+}
+
 func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	// Check for restart request first, before handling any other messages
+	// Check for restart request
 	if m.restartRequested {
 		return m.restartGame()
 	}
@@ -300,76 +334,23 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastUpdateTime = now
 			}
 		} else {
-			// Normal animation frame processing
 			now := time.Now()
 			m.lastUpdateTime = now
 
-			// Process pet animation updates
 			m.updateAnimation(now)
 
-			// Handle pet movement independently of animation frames
-			// Only perform special animations for Idle state
-			isIdle := m.currentAnim.Name == "Idle"
+			m.handlePetMovement()
 
-			if isIdle && !m.pet.IsDead() {
-				// Handle movement every ~3 seconds
-				if m.frameCounter%3 == 0 {
-					// If we're at target position, set a new target
-					if m.petPosition == m.targetPosition {
-						if m.targetPosition == 0 {
-							// We're at center, choose a random direction
-							if rand.Intn(2) == 0 {
-								m.targetPosition = 3 // Move right
-								m.moveDirection = 1
-							} else {
-								m.targetPosition = -3 // Move left
-								m.moveDirection = -1
-							}
-						} else {
-							// We're at an edge, go back to center
-							m.targetPosition = 0
-							if m.petPosition > 0 {
-								m.moveDirection = -1
-							} else {
-								m.moveDirection = 1
-							}
-						}
-					} else {
-						// Move toward target position
-						m.petPosition += m.moveDirection
-
-						// Check if we've reached or passed the target
-						if (m.moveDirection > 0 && m.petPosition >= m.targetPosition) ||
-							(m.moveDirection < 0 && m.petPosition <= m.targetPosition) {
-							m.petPosition = m.targetPosition // Snap to exact target
-						}
-					}
-				}
-			} else {
-				// For non-idle animations, reset position to center over time
-				if m.petPosition != 0 {
-					if m.petPosition > 0 {
-						m.petPosition--
-					} else if m.petPosition < 0 {
-						m.petPosition++
-					}
-				}
-			}
-
-			// Each second, also update pet stats (hunger increases, etc)
-			// Only apply automatic updates when not in debug mode
 			if now.Sub(m.lastStatUpdateTime) >= time.Second && !m.debugMode {
 				m.updatePetState()
-				m.lastStatUpdateTime = now // Update the last stat update time
+				m.lastStatUpdateTime = now
 			}
 
-			// Check if we need to clear selection highlight
 			if m.selectedAction >= 0 && time.Since(m.selectedTime) > 1*time.Second {
 				m.selectedAction = -1
 			}
 		}
 
-		// Always continue the global ticker
 		return m, m.startGlobalTicker()
 
 	case tea.KeyMsg:
@@ -390,7 +371,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Debug mode toggle with Ctrl+D
 		if msg.String() == "ctrl+d" {
 			m.debugMode = !m.debugMode
-			m.inDebugMenu = m.debugMode // Show debug menu when toggling on
+			m.inDebugMenu = m.debugMode
 			return m, nil
 		}
 
@@ -546,7 +527,8 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Normal UI controls when not in game
 		switch {
 		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Quit
+			// Use the custom quit message instead of tea.Quit
+			return m, func() tea.Msg { return QuitMsg{} }
 
 		// Add this case for toggling help visibility
 		case key.Matches(msg, m.keys.Help):
@@ -644,8 +626,8 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedAction = m.cursor
 				m.selectedTime = time.Now()
 
-				// If pet is sleeping (lights off), only allow toggling lights
-				if !m.pet.LightsOn && m.cursor != 5 { // 5 is the index for "Toggle Lights"
+				// If pet is sleeping (lights off), only allow toggling lights or quitting
+				if !m.pet.LightsOn && m.cursor != 5 && m.cursor != 6 { // 5 is Toggle Lights, 6 is Quit
 					// Pet is sleeping, can't perform other actions
 					return m, nil
 				}
@@ -671,8 +653,9 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Implement toggle lights functionality
 					m.pet.ToggleLights()
 				} else if m.cursor == 6 { // Quit
-					// Exit the application
-					return m, tea.Quit
+					// Instead of directly quitting, emit a custom quit message that will allow
+					// parent components to save state before quitting
+					return m, func() tea.Msg { return QuitMsg{} }
 				}
 			}
 		case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.Left):
@@ -687,8 +670,10 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// If pet is sleeping, only allow moving to Toggle Lights or Quit
 				if !m.pet.LightsOn {
 					// Only allow movement to Toggle Lights (5) or Quit (6)
-					if m.cursor > 5 {
+					if m.cursor > 6 {
 						m.cursor--
+					} else if m.cursor == 6 {
+						m.cursor = 5
 					} else if m.cursor < 5 {
 						m.cursor = 5
 					}
@@ -712,7 +697,9 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.cursor < 5 {
 						m.cursor = 5
 					} else if m.cursor == 5 {
-						m.cursor++
+						m.cursor = 6
+					} else if m.cursor > 6 {
+						m.cursor = 6
 					}
 				} else {
 					m.cursor++

@@ -45,7 +45,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 	}
 
 	err = r.db.QueryRow(`
-		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped
+		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
 		FROM pets WHERE parent_id = ? LIMIT 1
 	`, userID).Scan(
 		&model.ID,
@@ -59,6 +59,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 		&model.Weight,
 		&model.IsSick,
 		&model.HasPooped,
+		&model.LightsOn,
 	)
 
 	if err != nil {
@@ -78,6 +79,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 	petModel.Weight = model.Weight
 	petModel.IsSick = model.IsSick
 	petModel.HasPooped = model.HasPooped
+	petModel.LightsOn = model.LightsOn
 
 	return petModel, nil
 }
@@ -118,8 +120,8 @@ func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) 
 		if err == sql.ErrNoRows {
 			_, err := r.db.Exec(`
 				INSERT INTO pets (
-					name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`,
 				p.Name,
 				p.BirthDate,
@@ -131,6 +133,7 @@ func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) 
 				p.Weight,
 				p.IsSick,
 				p.HasPooped,
+				p.LightsOn,
 			)
 			if err != nil {
 				return fmt.Errorf("create pet: %w", err)
@@ -150,6 +153,7 @@ func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) 
 				weight = ?, 
 				is_sick = ?,
 				has_pooped = ?,
+				lights_on = ?,
 				updated_at = ?
 			WHERE id = ?
 		`,
@@ -162,6 +166,7 @@ func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) 
 			p.Weight,
 			p.IsSick,
 			p.HasPooped,
+			p.LightsOn,
 			time.Now(),
 			petID,
 		)
