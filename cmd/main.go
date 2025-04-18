@@ -17,13 +17,6 @@ import (
 	"github.com/kirkegaard/terminal-pet/pkg/ssh"
 )
 
-var (
-	sshHost      = "localhost"
-	sshPort      = "23234"
-	dbDriverName = "sqlite3"
-	dbDSN        = "file::memory:?cache=shared"
-)
-
 type Server struct {
 	SSHServer *ssh.SSHServer
 	DB        *db.DB
@@ -91,8 +84,19 @@ func main() {
 	// Create base context
 	ctx := context.Background()
 
-	// Load configuration
+	// Load configuration with defaults
 	cfg := config.DefaultConfig()
+
+	// Parse environment variables
+	if err := config.ParseEnv(cfg); err != nil {
+		log.Warn("Failed to parse environment variables", "error", err)
+	}
+
+	log.Info("Configuration loaded",
+		"ssh_listen", cfg.SSH.ListenAddr,
+		"ssh_url", cfg.SSH.PublicURL,
+		"db_driver", cfg.DB.Driver,
+		"db_source", cfg.DB.DataSource)
 
 	// Set the config in the context
 	ctx = config.WithContext(ctx, cfg)
@@ -108,7 +112,7 @@ func main() {
 
 	// @TODO Add a way to gracefully shutdown all servers
 	log.Info("Starting SSH server", "address", s.Config.SSH.ListenAddr)
-	log.Info("Connect using:", "command", fmt.Sprintf("ssh localhost -p %s", s.Config.SSH.ListenAddr[10:]))
+
 	go func() {
 		if err = s.SSHServer.ListenAndServe(); err != nil && !errors.Is(err, cssh.ErrServerClosed) {
 			log.Error("Could not start server", "error", err)

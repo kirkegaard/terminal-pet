@@ -22,6 +22,22 @@ A virtual pet (Tamagotchi-like) terminal game that runs via SSH.
    ./bin/pet-game
    ```
 
+## Configuration
+
+The application can be configured using environment variables:
+
+| Environment Variable | Default | Description |
+|----------------------|---------|-------------|
+| `SSH_LISTEN_ADDR` | `0.0.0.0:23234` | The address and port to listen for SSH connections |
+| `SSH_PUBLIC_URL` | `ssh://localhost:23234` | Public URL for SSH connections |
+| `DB_DRIVER` | `sqlite3` | Database driver to use |
+| `DB_DATA_SOURCE` | `./tmp/terminal-pet.db` | Database connection string |
+
+Example:
+```bash
+SSH_LISTEN_ADDR=0.0.0.0:2222 DB_DATA_SOURCE=./data/pets.db ./bin/pet-game
+```
+
 ## How to Play
 
 1. Connect to the game via SSH:
@@ -35,6 +51,14 @@ A virtual pet (Tamagotchi-like) terminal game that runs via SSH.
 3. Press Enter or Space to select an option
 4. Press q or Ctrl+C to quit
 5. Press ? to toggle help
+
+## Generate SSH key
+
+If you don't have an SSH key, you can generate one using the following command:
+
+```bash
+ssh-keygen -o
+```
 
 ## Persistence
 
@@ -52,8 +76,7 @@ The system uses your SSH public key as a unique identifier to associate you with
 - **Clean**: Clean your pet's living area
 - **Play**: Play with your pet to increase happiness
 - **Medicine**: Use when your pet is sick
-- **Stats**: Toggle stats display
-- **Status**: View detailed status
+- **Sleep**: Put your pet to sleep to restore health
 
 ## Pet Care Instructions
 
@@ -62,13 +85,14 @@ The system uses your SSH public key as a unique identifier to associate you with
 - If you neglect your pet, it will become sad and eventually die
 - Each pet has its own personality and needs
 
-## Development
+## Build
 
-To build and run the game during development:
+To build:
 
 ```
-cd cmd && go build -o ../bin/pet-game && cd .. && ./bin/pet-game
+go build -o ./bin/pet-game ./cmd/main.go
 ```
+
 
 ## License
 
