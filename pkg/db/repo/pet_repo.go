@@ -12,7 +12,8 @@ import (
 )
 
 type PetRepository struct {
-	db *db.DB
+	db       *db.DB
+	userRepo *UserRepository
 }
 
 func NewPetRepository(database *db.DB) *PetRepository {
@@ -21,33 +22,53 @@ func NewPetRepository(database *db.DB) *PetRepository {
 	}
 
 	return &PetRepository{
-		db: database,
+		db:       database,
+		userRepo: NewUserRepository(database),
 	}
 }
 
-func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey string) (*pet.Pet, error) {
+// Create creates a new pet in the database
+func (r *PetRepository) Create(ctx context.Context, p *pet.Pet) error {
 	if r.db == nil {
-		r.db = db.GetInstance()
-		if r.db == nil {
-			return nil, fmt.Errorf("no database connection available")
-		}
+		return fmt.Errorf("no database connection available")
+	}
+
+	_, err := r.db.Exec(`
+		INSERT INTO pets (
+			name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		p.Name,
+		p.BirthDate,
+		p.Parent.ID,
+		p.Hunger,
+		p.Happiness,
+		p.Discipline,
+		p.Health,
+		p.Weight,
+		p.IsSick,
+		p.HasPooped,
+		p.LightsOn,
+	)
+	if err != nil {
+		return fmt.Errorf("create pet: %w", err)
+	}
+
+	return nil
+}
+
+// GetByID retrieves a pet by its ID
+func (r *PetRepository) GetByID(ctx context.Context, id int) (*pet.Pet, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("no database connection available")
 	}
 
 	var model models.Pet
 
-	var userID int
-	err := r.db.QueryRow("SELECT id FROM users WHERE public_key = ?", publicKey).Scan(&userID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("find user by public key: %w", err)
-	}
-
-	err = r.db.QueryRow(`
+	err := r.db.QueryRow(`
 		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on, updated_at
-		FROM pets WHERE parent_id = ? LIMIT 1
-	`, userID).Scan(
+		FROM pets WHERE id = ?
+	`, id).Scan(
 		&model.ID,
 		&model.Name,
 		&model.BirthDate,
@@ -67,7 +88,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("find pet by parent id: %w", err)
+		return nil, fmt.Errorf("get pet by id: %w", err)
 	}
 
 	parent := pet.NewParent(model.ParentID, "Player")
@@ -86,96 +107,157 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 	return petModel, nil
 }
 
-func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) error {
+// GetByParentID retrieves a pet by its parent ID
+func (r *PetRepository) GetByParentID(ctx context.Context, parentID int) (*pet.Pet, error) {
 	if r.db == nil {
-		r.db = db.GetInstance()
-		if r.db == nil {
-			return fmt.Errorf("no database connection available")
-		}
+		return nil, fmt.Errorf("no database connection available")
 	}
 
-	var userID int
-	err := r.db.QueryRow("SELECT id FROM users WHERE public_key = ?", publicKey).Scan(&userID)
+	var model models.Pet
+
+	err := r.db.QueryRow(`
+		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on, updated_at
+		FROM pets WHERE parent_id = ? LIMIT 1
+	`, parentID).Scan(
+		&model.ID,
+		&model.Name,
+		&model.BirthDate,
+		&model.ParentID,
+		&model.Hunger,
+		&model.Happiness,
+		&model.Discipline,
+		&model.Health,
+		&model.Weight,
+		&model.IsSick,
+		&model.HasPooped,
+		&model.LightsOn,
+		&model.UpdatedAt,
+	)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
-			res, err := r.db.Exec("INSERT INTO users (name, public_key) VALUES (?, ?)", p.Parent.Name, publicKey)
-			if err != nil {
-				return fmt.Errorf("create user: %w", err)
-			}
-
-			id, err := res.LastInsertId()
-			if err != nil {
-				return fmt.Errorf("get last insert id: %w", err)
-			}
-
-			userID = int(id)
-			p.Parent.ID = userID
-		} else {
-			return fmt.Errorf("find user by public key: %w", err)
+			return nil, nil
 		}
+		return nil, fmt.Errorf("get pet by parent id: %w", err)
 	}
 
-	// Check if the pet already exists
-	var petID int
-	err = r.db.QueryRow("SELECT id FROM pets WHERE parent_id = ?", userID).Scan(&petID)
+	parent := pet.NewParent(model.ParentID, "Player")
+
+	petModel := pet.NewPet(model.Name, model.BirthDate, parent)
+	petModel.Hunger = model.Hunger
+	petModel.Happiness = model.Happiness
+	petModel.Discipline = model.Discipline
+	petModel.Health = model.Health
+	petModel.Weight = model.Weight
+	petModel.IsSick = model.IsSick
+	petModel.HasPooped = model.HasPooped
+	petModel.LightsOn = model.LightsOn
+	petModel.LastVisit = model.UpdatedAt
+
+	return petModel, nil
+}
+
+// Update updates an existing pet in the database
+func (r *PetRepository) Update(ctx context.Context, p *pet.Pet) error {
+	if r.db == nil {
+		return fmt.Errorf("no database connection available")
+	}
+
+	_, err := r.db.Exec(`
+		UPDATE pets SET 
+			name = ?,
+			birthday = ?,
+			hunger = ?, 
+			happiness = ?, 
+			discipline = ?, 
+			health = ?, 
+			weight = ?, 
+			is_sick = ?,
+			has_pooped = ?,
+			lights_on = ?,
+			updated_at = ?
+		WHERE parent_id = ?
+	`,
+		p.Name,
+		p.BirthDate,
+		p.Hunger,
+		p.Happiness,
+		p.Discipline,
+		p.Health,
+		p.Weight,
+		p.IsSick,
+		p.HasPooped,
+		p.LightsOn,
+		time.Now(),
+		p.Parent.ID,
+	)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			_, err := r.db.Exec(`
-				INSERT INTO pets (
-					name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`,
-				p.Name,
-				p.BirthDate,
-				userID,
-				p.Hunger,
-				p.Happiness,
-				p.Discipline,
-				p.Health,
-				p.Weight,
-				p.IsSick,
-				p.HasPooped,
-				p.LightsOn,
-			)
-			if err != nil {
-				return fmt.Errorf("create pet: %w", err)
-			}
-		} else {
-			return fmt.Errorf("find pet by parent id: %w", err)
-		}
-	} else {
-		_, err := r.db.Exec(`
-			UPDATE pets SET 
-				name = ?,
-				birthday = ?,
-				hunger = ?, 
-				happiness = ?, 
-				discipline = ?, 
-				health = ?, 
-				weight = ?, 
-				is_sick = ?,
-				has_pooped = ?,
-				lights_on = ?,
-				updated_at = ?
-			WHERE id = ?
-		`,
-			p.Name,
-			p.BirthDate,
-			p.Hunger,
-			p.Happiness,
-			p.Discipline,
-			p.Health,
-			p.Weight,
-			p.IsSick,
-			p.HasPooped,
-			p.LightsOn,
-			time.Now(),
-			petID,
-		)
-		if err != nil {
-			return fmt.Errorf("update pet: %w", err)
-		}
+		return fmt.Errorf("update pet: %w", err)
 	}
 
 	return nil
+}
+
+// Delete removes a pet from the database
+func (r *PetRepository) Delete(ctx context.Context, id int) error {
+	if r.db == nil {
+		return fmt.Errorf("no database connection available")
+	}
+
+	_, err := r.db.Exec("DELETE FROM pets WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete pet: %w", err)
+	}
+
+	return nil
+}
+
+// FindByParentPublicKey is a helper method that retrieves a pet by the parent's public key
+func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey string) (*pet.Pet, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("no database connection available")
+	}
+
+	userID, err := r.userRepo.GetByPublicKey(ctx, publicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if userID == 0 {
+		return nil, nil
+	}
+
+	return r.GetByParentID(ctx, userID)
+}
+
+// Save is a helper method that either creates or updates a pet
+func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) error {
+	if r.db == nil {
+		return fmt.Errorf("no database connection available")
+	}
+
+	userID, err := r.userRepo.GetByPublicKey(ctx, publicKey)
+	if err != nil {
+		return err
+	}
+
+	if userID == 0 {
+		userID, err = r.userRepo.Create(ctx, p.Parent.Name, publicKey)
+		if err != nil {
+			return err
+		}
+		p.Parent.ID = userID
+	}
+
+	// Check if the pet already exists
+	existingPet, err := r.GetByParentID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if existingPet == nil {
+		return r.Create(ctx, p)
+	} else {
+		return r.Update(ctx, p)
+	}
 }

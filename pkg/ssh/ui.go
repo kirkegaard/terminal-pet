@@ -67,26 +67,7 @@ func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return ui, tea.Quit
 		}
 
-		oldPetUI, isPetUI := ui.petUI.(*petui.PetUI)
-		wasRestarted := isPetUI && oldPetUI.JustRestarted()
-
 		ui.petUI, cmd = ui.petUI.Update(msg)
-
-		newPetUI, isPetUI := ui.petUI.(*petui.PetUI)
-		if isPetUI && !wasRestarted && newPetUI.JustRestarted() {
-			ui.currentPet = newPetUI.GetPet()
-			log.Info("Pet was restarted and will be saved", "name", ui.currentPet.Name)
-
-			petRepo := repo.NewPetRepository(nil)
-			err := petRepo.Save(context.Background(), ui.currentPet, ui.publicKey)
-			if err != nil {
-				log.Error("Error saving pet after restart", "error", err)
-			} else {
-				log.Info("Pet saved after restart", "name", ui.currentPet.Name)
-			}
-
-			newPetUI.ResetRestartFlag()
-		}
 
 		if cmdName := fmt.Sprintf("%T", cmd); strings.Contains(cmdName, "Quit") {
 			return ui, cmd
@@ -117,9 +98,6 @@ func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (ui *UI) syncPetState() {
-	// Update visit time is handled by the database's updated_at
-	// ui.currentPet.LastVisit = time.Now()
-
 	// Always get the current pet state from the UI model first
 	if petUIModel, ok := ui.petUI.(*petui.PetUI); ok {
 		ui.currentPet = petUIModel.GetPet()

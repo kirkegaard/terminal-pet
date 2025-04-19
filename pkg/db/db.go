@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	// "github.com/kirkegaard/terminal-pet/pkg/db/models"
 	"github.com/charmbracelet/log"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
@@ -86,37 +85,6 @@ func (d *DB) CreateTables(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	// // Check if the is_sick column exists
-	// var count int
-	// err = d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pets') WHERE name='is_sick'`).Scan(&count)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Add is_sick column if it doesn't exist
-	// if count == 0 {
-	// 	_, err = d.Exec(`ALTER TABLE pets ADD COLUMN is_sick BOOLEAN NOT NULL DEFAULT 0`)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	log.Info("Added is_sick column to pets table")
-	// }
-
-	// // Check if the has_pooped column exists
-	// err = d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pets') WHERE name='has_pooped'`).Scan(&count)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Add has_pooped column if it doesn't exist
-	// if count == 0 {
-	// 	_, err = d.Exec(`ALTER TABLE pets ADD COLUMN has_pooped BOOLEAN NOT NULL DEFAULT 0`)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	log.Info("Added has_pooped column to pets table")
-	// }
 
 	log.Info("Database tables created successfully")
 	return nil

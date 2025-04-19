@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/log"
 	"github.com/kirkegaard/terminal-pet/pkg/pet"
 	"github.com/kirkegaard/terminal-pet/pkg/pet/ascii"
 	"github.com/kirkegaard/terminal-pet/pkg/ui/handlers"
@@ -107,11 +108,6 @@ func (m *PetUI) ResetRestartFlag() {
 	m.justRestarted = false
 }
 
-// JustRestarted returns whether the pet was just restarted
-func (m *PetUI) JustRestarted() bool {
-	return m.justRestarted
-}
-
 // SetGameOver sets the game over state to the specified value
 func (m *PetUI) SetGameOver(isGameOver bool) {
 	m.inGameOver = isGameOver
@@ -177,7 +173,6 @@ func NewPetUI(p *pet.Pet, width, height int) *PetUI {
 		inGameOver:       inGameOver,
 		gameOverCursor:   initialCursor,
 		restartRequested: false,
-		justRestarted:    false,
 
 		// Rename mode
 		inRenameMode: false,
@@ -311,6 +306,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Check for restart request
 	if m.restartRequested {
+		log.Debug("Restarting game")
 		return m.restartGame()
 	}
 
@@ -432,7 +428,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// If we're in a game, handle game controls
 		if m.inGame {
 			switch msg.String() {
-			case "h", "left", "a":
+			case "h", "left":
 				// Player guesses "lower"
 				wasInGame := m.inGame
 				m.inGame, m.gameNumber, m.gameGuessesLeft, m.gameScore, m.showResult, m.lastGuessWasCorrect, m.lastNumber, m.animState, m.pet = handlers.HandleGameGuess(
@@ -471,7 +467,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				return m, nil
 
-			case "l", "right", "d":
+			case "l", "right":
 				// Player guesses "higher"
 				wasInGame := m.inGame
 				m.inGame, m.gameNumber, m.gameGuessesLeft, m.gameScore, m.showResult, m.lastGuessWasCorrect, m.lastNumber, m.animState, m.pet = handlers.HandleGameGuess(
@@ -757,7 +753,7 @@ func (m *PetUI) updatePetState() {
 	// Normal state updates (when lights are on)
 	// Increase hunger over time, but only if pet is not full
 	// Make hunger increase more consistently for testing
-	if m.pet.Hunger < 100 && rand.Intn(5) == 0 { // Changed from 30 to 5 (much faster)
+	if m.pet.Hunger < 100 && rand.Intn(5) == 0 {
 		m.pet.Hunger += 1
 	}
 
@@ -777,7 +773,7 @@ func (m *PetUI) updatePetState() {
 	}
 
 	// Decrease happiness over time (increased rate for testing)
-	if rand.Intn(2) == 0 { // Keep 50% chance each update
+	if rand.Intn(2) == 0 {
 		m.pet.Happiness -= 1
 	}
 
@@ -800,12 +796,12 @@ func (m *PetUI) updatePetState() {
 	}
 
 	// Weight affects health - heavier pets lose health faster
-	if m.pet.Weight > 100 { // Obese
-		if rand.Intn(60) == 0 { // Every minute on average
+	if m.pet.Weight > 100 {
+		if rand.Intn(60) == 0 {
 			m.pet.Health -= 1
 		}
-	} else if m.pet.Weight > 75 { // Fat
-		if rand.Intn(120) == 0 { // Every 2 minutes on average
+	} else if m.pet.Weight > 75 {
+		if rand.Intn(120) == 0 {
 			m.pet.Health -= 1
 		}
 	}
@@ -823,23 +819,23 @@ func (m *PetUI) updatePetState() {
 
 	// Random chance for sickness (if not already sick)
 	if !m.pet.IsSick && !m.pet.IsDead() {
-		if rand.Intn(3600) == 0 { // ~Once per hour on average
+		if rand.Intn(3600) == 0 {
 			m.pet.IsSick = true
 		}
 	}
 
 	// Natural weight loss over time when hungry
-	// Pets gradually lose weight when they don't eat (hunger is high)
-	if m.pet.Hunger > 50 && rand.Intn(300) == 0 { // ~Once every 5 minutes when hunger > 50
+	if m.pet.Hunger > 50 && rand.Intn(300) == 0 {
 		m.pet.Weight -= 1
-		if m.pet.Weight < 10 { // Don't let pet get too thin
+		if m.pet.Weight < 10 {
 			m.pet.Weight = 10
 		}
 	}
 
 	// Sickness decreases health
 	if m.pet.IsSick {
-		if rand.Intn(20) == 0 { // Health decreases faster when sick
+		// Health decreases faster when sick
+		if rand.Intn(20) == 0 {
 			m.pet.Health -= 1
 		}
 	}
@@ -1005,29 +1001,23 @@ func (m *PetUI) View() string {
 	return output
 }
 
-// startGame initializes a new game
+// Initializes a new game
 func (m *PetUI) startGame() (tea.Model, tea.Cmd) {
-	// Start the higher/lower game
 	m.inGame, m.gameGuessesLeft, m.gameScore, m.gameNumber, m.showResult, m.lastNumber, m.lastGuessWasCorrect, m.animState = handlers.StartGame()
 
-	// Set animation
 	m.currentAnim = ascii.Playing
 
-	// Reset animation state
 	now := time.Now()
 	m.currentFrame = 0
 	m.frameCounter = 0
 	m.animCompleted = false
 	m.lastUpdateTime = now
-	// Don't reset stat update time - pet stats should continue updating independently
 
-	// No need to return a ticker command - the global ticker is already running
 	return m, nil
 }
 
-// restartGame creates a new pet and resets the game state
+// Creates a new pet and resets the game state
 func (m *PetUI) restartGame() (tea.Model, tea.Cmd) {
-	// Create a new pet with the same name and parent
 	m.pet = handlers.RestartGame(m.pet.Name, m.pet.Parent)
 
 	// Reset UI state
@@ -1035,7 +1025,7 @@ func (m *PetUI) restartGame() (tea.Model, tea.Cmd) {
 	m.currentAnim = ascii.GetAnimationForState(m.pet.GetState())
 	m.currentFrame = 0
 	m.lastUpdateTime = now
-	m.lastStatUpdateTime = now // Reset stat update time on restart
+	m.lastStatUpdateTime = now
 	m.cursor = 0
 	m.selectedAction = -1
 	m.inGameOver = false

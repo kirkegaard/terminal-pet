@@ -10,9 +10,9 @@ type Pet struct {
 	Name       string    `json:"name"`
 	BirthDate  time.Time `json:"birthDate"`
 	Parent     *Parent
-	Hunger     int `json:"hunger"`
-	Happiness  int `json:"happiness"`
-	Discipline int
+	Discipline int       // Not yet implemented
+	Hunger     int       `json:"hunger"`
+	Happiness  int       `json:"happiness"`
 	Health     int       `json:"health"`
 	Weight     int       `json:"weight"`
 	IsSick     bool      `json:"isSick"`
