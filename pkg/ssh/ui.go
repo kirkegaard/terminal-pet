@@ -117,8 +117,8 @@ func (ui *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (ui *UI) syncPetState() {
-	// Update visit time
-	ui.currentPet.LastVisit = time.Now()
+	// Update visit time is handled by the database's updated_at
+	// ui.currentPet.LastVisit = time.Now()
 
 	// Always get the current pet state from the UI model first
 	if petUIModel, ok := ui.petUI.(*petui.PetUI); ok {

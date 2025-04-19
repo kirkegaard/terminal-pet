@@ -45,7 +45,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 	}
 
 	err = r.db.QueryRow(`
-		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
+		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on, updated_at
 		FROM pets WHERE parent_id = ? LIMIT 1
 	`, userID).Scan(
 		&model.ID,
@@ -60,6 +60,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 		&model.IsSick,
 		&model.HasPooped,
 		&model.LightsOn,
+		&model.UpdatedAt,
 	)
 
 	if err != nil {
@@ -80,6 +81,7 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 	petModel.IsSick = model.IsSick
 	petModel.HasPooped = model.HasPooped
 	petModel.LightsOn = model.LightsOn
+	petModel.LastVisit = model.UpdatedAt
 
 	return petModel, nil
 }

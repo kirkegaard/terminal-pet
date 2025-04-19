@@ -80,8 +80,6 @@ func SessionHandler(s ssh.Session) *tea.Program {
 			simulateTimePassed(existingPet, timePassed)
 		}
 
-		existingPet.LastVisit = time.Now()
-
 		ui = NewUI(context.Background(), renderer, pty.Window.Width, pty.Window.Height, existingPet, publicKey)
 
 		if existingPet.Health <= 0 {
@@ -246,88 +244,78 @@ func simulateTimePassed(p *pet.Pet, duration time.Duration) {
 
 	log.Info("Simulating time passage", "hours", hours)
 
-	// Base rates
-	hungerPerHour := 2.0 + rand.Float64()*4
-	happinessLossPerHour := 1.0 + rand.Float64()*1.5
-
-	// Progressive multipliers based on duration
-	durationMultiplier := 1.0
-	if hours > 24 {
-		durationMultiplier = 1.2 // After 1 day, things get worse
-	}
-	if hours > 48 {
-		durationMultiplier = 1.5 // After 2 days, even worse
-	}
-	if hours > 72 {
-		durationMultiplier = 2.0 // After 3 days, much worse
-	}
-	if hours > 120 {
-		durationMultiplier = 3.0 // After 5 days, critical
+	// Cap at 7 days for simulation
+	simulatedHours := hours
+	if simulatedHours > 168 {
+		log.Info("Capping simulation at 7 days", "actual_hours", hours)
+		simulatedHours = 168
 	}
 
-	// Apply multipliers
-	hungerIncrease := int(hours * hungerPerHour * durationMultiplier)
-	happinessDecrease := int(hours * happinessLossPerHour * durationMultiplier)
+	// Calculate days for easier reasoning
+	days := simulatedHours / 24
 
-	// Base health decrease (gets worse with time)
-	healthDecrease := int(hours * 0.2 * durationMultiplier)
-
-	// Apply changes to pet stats
+	hungerPerDay := 35.0
+	hungerIncrease := int(days * hungerPerDay)
 	p.Hunger += hungerIncrease
 	if p.Hunger > 100 {
-		extraHunger := p.Hunger - 100
-		healthDecrease += extraHunger / 3 // More severe health impact from hunger
 		p.Hunger = 100
 	}
 
+	happinessLossPerDay := 35.0
+	happinessDecrease := int(days * happinessLossPerDay)
 	p.Happiness -= happinessDecrease
 	if p.Happiness < 0 {
 		p.Happiness = 0
 	}
 
+	healthDecrease := 0
+	if days < 2 {
+		healthDecrease = int(days * 5)
+	} else if days < 4 {
+		healthDecrease = 10 + int((days-2)*10)
+	} else if days < 5 {
+		healthDecrease = 30 + int((days-4)*20)
+	} else if days < 6 {
+		healthDecrease = 50 + int((days-5)*30)
+	} else {
+		healthDecrease = 80 + int((days-6)*40)
+	}
+
 	if p.Hunger > 80 {
-		healthDecrease += int(hours * 0.8 * durationMultiplier)
+		// No penalty for first 3 days
+		hungerDays := math.Max(0, days-3)
+		healthDecrease += int(hungerDays * 5)
 	}
 
-	// Guaranteed death threshold (after about a week)
-	if hours > 160 {
-		healthDecrease = max(healthDecrease, p.Health) // Ensure pet dies
-	}
-
-	// Pooping probability increases with time
-	poopChance := hours / 12
-	if hours > 48 {
-		poopChance = math.Min(1.0, poopChance*1.5) // Higher chance after 2 days
-	}
-	if !p.HasPooped && rand.Float64() < poopChance {
-		p.HasPooped = true
-	}
-
-	// Sickness probability increases with time
-	sickChance := hours / 48
-	if hours > 72 {
-		sickChance = math.Min(1.0, sickChance*2) // Higher chance after 3 days
-	}
-	if !p.IsSick && rand.Float64() < sickChance {
-		p.IsSick = true
-	}
-
-	// Additional effects if sick or has pooped
-	if p.IsSick {
-		sickHealthLoss := int((hours + 0.5) * durationMultiplier)
-		healthDecrease += sickHealthLoss
-	}
-
-	if p.HasPooped {
-		poopHealthLoss := int((hours*0.5 + 0.5) * durationMultiplier)
-		healthDecrease += poopHealthLoss
-		p.Happiness -= poopHealthLoss
-		if p.Happiness < 0 {
-			p.Happiness = 0
+	// Poop guaranteed after 2 days
+	if !p.HasPooped {
+		if days > 2 || rand.Float64() < (days/2) {
+			p.HasPooped = true
 		}
 	}
 
-	// Apply total health decrease
+	if p.HasPooped {
+		poopDays := math.Max(0, days-2)
+		healthDecrease += int(poopDays * 3)
+	}
+
+	if !p.IsSick {
+		sickChance := days / 3
+		if days > 3 || rand.Float64() < sickChance {
+			p.IsSick = true
+		}
+	}
+
+	if p.IsSick {
+		sickDays := math.Max(0, days-3)
+		healthDecrease += int(sickDays * 7)
+	}
+
+	// Kill after 7 days absent
+	if hours > 168 {
+		healthDecrease = 100
+	}
+
 	p.Health -= healthDecrease
 	if p.Health < 0 {
 		p.Health = 0
@@ -337,7 +325,8 @@ func simulateTimePassed(p *pet.Pet, duration time.Duration) {
 		"hunger", p.Hunger,
 		"happiness", p.Happiness,
 		"health", p.Health,
+		"health_decrease", healthDecrease,
+		"days_absent", days,
 		"is_sick", p.IsSick,
-		"has_pooped", p.HasPooped,
-		"duration_multiplier", durationMultiplier)
+		"has_pooped", p.HasPooped)
 }
