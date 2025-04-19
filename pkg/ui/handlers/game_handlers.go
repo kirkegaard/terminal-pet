@@ -1,19 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"math/rand"
 	"time"
 
+	"github.com/charmbracelet/log"
+	"github.com/kirkegaard/terminal-pet/pkg/db/repo"
 	"github.com/kirkegaard/terminal-pet/pkg/pet"
 )
 
 func StartGame() (inGame bool, guessesLeft int, score int, number int, showResult bool, lastNumber int, lastGuessWasCorrect bool, animState string) {
-	rand.Seed(time.Now().UnixNano())
-
 	inGame = true
-	guessesLeft = 5 // The player gets exactly 5 guesses total (5 rounds)
+	guessesLeft = 5
 	score = 0
-	number = rand.Intn(9) + 1 // 1-9
+	number = rand.Intn(9) + 1
 	showResult = false
 	lastNumber = 0
 	lastGuessWasCorrect = false
@@ -35,7 +36,7 @@ func HandleGameGuess(
 ) (bool, int, int, int, bool, bool, int, string, *pet.Pet) {
 	newInGame := inGame
 	newGameNumber := gameNumber
-	newGameGuessesLeft := gameGuessesLeft - 1 // Decrement guesses left with each guess, regardless of outcome
+	newGameGuessesLeft := gameGuessesLeft - 1
 	newGameScore := gameScore
 	newShowResult := true
 	newLastGuessWasCorrect := false
@@ -66,8 +67,9 @@ func HandleGameGuess(
 		}
 	}
 
+	// Don't let pet get too thin
 	p.Weight -= 1
-	if p.Weight < 10 { // Don't let pet get too thin
+	if p.Weight < 10 {
 		p.Weight = 10
 	}
 
@@ -131,5 +133,25 @@ func HandleGameOver(msg string, gameOverCursor int) (int, bool) {
 }
 
 func RestartGame(name string, parent *pet.Parent) *pet.Pet {
-	return pet.NewPet(name, time.Now(), parent)
+	log.Debug("Restarting game")
+
+	// Create a new pet with default values
+	newPet := pet.NewPet(name, time.Now(), parent)
+
+	// Preserve the parent ID which is needed for database operations
+	if parent != nil && parent.ID > 0 {
+		log.Debug("Using existing parent ID", "parentID", parent.ID)
+	}
+
+	// Get the pet repository and persist the new pet
+	petRepo := repo.NewPetRepository(nil)
+	err := petRepo.Create(context.Background(), newPet)
+	if err != nil {
+		log.Error("Failed to create pet in database", "error", err)
+		// If there's an error, just return the pet without persistence
+	} else {
+		log.Debug("Created new pet in database", "id", newPet.ID, "name", newPet.Name)
+	}
+
+	return newPet
 }

@@ -7,6 +7,7 @@ import (
 )
 
 type Pet struct {
+	ID         int       `json:"id"`
 	Name       string    `json:"name"`
 	BirthDate  time.Time `json:"birthDate"`
 	Parent     *Parent

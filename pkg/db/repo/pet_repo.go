@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/kirkegaard/terminal-pet/pkg/db"
 	"github.com/kirkegaard/terminal-pet/pkg/db/models"
 	"github.com/kirkegaard/terminal-pet/pkg/pet"
@@ -33,7 +34,7 @@ func (r *PetRepository) Create(ctx context.Context, p *pet.Pet) error {
 		return fmt.Errorf("no database connection available")
 	}
 
-	_, err := r.db.Exec(`
+	result, err := r.db.Exec(`
 		INSERT INTO pets (
 			name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -54,57 +55,14 @@ func (r *PetRepository) Create(ctx context.Context, p *pet.Pet) error {
 		return fmt.Errorf("create pet: %w", err)
 	}
 
-	return nil
-}
-
-// GetByID retrieves a pet by its ID
-func (r *PetRepository) GetByID(ctx context.Context, id int) (*pet.Pet, error) {
-	if r.db == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-
-	var model models.Pet
-
-	err := r.db.QueryRow(`
-		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on, updated_at
-		FROM pets WHERE id = ?
-	`, id).Scan(
-		&model.ID,
-		&model.Name,
-		&model.BirthDate,
-		&model.ParentID,
-		&model.Hunger,
-		&model.Happiness,
-		&model.Discipline,
-		&model.Health,
-		&model.Weight,
-		&model.IsSick,
-		&model.HasPooped,
-		&model.LightsOn,
-		&model.UpdatedAt,
-	)
-
+	// Get the last inserted ID and set it on the pet
+	id, err := result.LastInsertId()
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get pet by id: %w", err)
+		return fmt.Errorf("get last insert id: %w", err)
 	}
 
-	parent := pet.NewParent(model.ParentID, "Player")
-
-	petModel := pet.NewPet(model.Name, model.BirthDate, parent)
-	petModel.Hunger = model.Hunger
-	petModel.Happiness = model.Happiness
-	petModel.Discipline = model.Discipline
-	petModel.Health = model.Health
-	petModel.Weight = model.Weight
-	petModel.IsSick = model.IsSick
-	petModel.HasPooped = model.HasPooped
-	petModel.LightsOn = model.LightsOn
-	petModel.LastVisit = model.UpdatedAt
-
-	return petModel, nil
+	p.ID = int(id)
+	return nil
 }
 
 // GetByParentID retrieves a pet by its parent ID
@@ -117,7 +75,7 @@ func (r *PetRepository) GetByParentID(ctx context.Context, parentID int) (*pet.P
 
 	err := r.db.QueryRow(`
 		SELECT id, name, birthday, parent_id, hunger, happiness, discipline, health, weight, is_sick, has_pooped, lights_on, updated_at
-		FROM pets WHERE parent_id = ? LIMIT 1
+		FROM pets WHERE parent_id = ? ORDER BY created_at DESC LIMIT 1
 	`, parentID).Scan(
 		&model.ID,
 		&model.Name,
@@ -144,6 +102,7 @@ func (r *PetRepository) GetByParentID(ctx context.Context, parentID int) (*pet.P
 	parent := pet.NewParent(model.ParentID, "Player")
 
 	petModel := pet.NewPet(model.Name, model.BirthDate, parent)
+	petModel.ID = model.ID
 	petModel.Hunger = model.Hunger
 	petModel.Happiness = model.Happiness
 	petModel.Discipline = model.Discipline
@@ -176,7 +135,7 @@ func (r *PetRepository) Update(ctx context.Context, p *pet.Pet) error {
 			has_pooped = ?,
 			lights_on = ?,
 			updated_at = ?
-		WHERE parent_id = ?
+		WHERE id = ? AND parent_id = ?
 	`,
 		p.Name,
 		p.BirthDate,
@@ -189,6 +148,7 @@ func (r *PetRepository) Update(ctx context.Context, p *pet.Pet) error {
 		p.HasPooped,
 		p.LightsOn,
 		time.Now(),
+		p.ID,
 		p.Parent.ID,
 	)
 	if err != nil {
@@ -227,7 +187,18 @@ func (r *PetRepository) FindByParentPublicKey(ctx context.Context, publicKey str
 		return nil, nil
 	}
 
-	return r.GetByParentID(ctx, userID)
+	pet, err := r.GetByParentID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if pet != nil {
+		log.Debug("Found pet by public key", "id", pet.ID, "name", pet.Name)
+	} else {
+		log.Debug("No pet found for user", "userID", userID)
+	}
+
+	return pet, nil
 }
 
 // Save is a helper method that either creates or updates a pet
@@ -235,6 +206,8 @@ func (r *PetRepository) Save(ctx context.Context, p *pet.Pet, publicKey string) 
 	if r.db == nil {
 		return fmt.Errorf("no database connection available")
 	}
+
+	log.Debug("Saving pet", "id", p.ID, "name", p.Name)
 
 	userID, err := r.userRepo.GetByPublicKey(ctx, publicKey)
 	if err != nil {

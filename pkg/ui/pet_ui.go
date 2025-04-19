@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/log"
+	// "github.com/charmbracelet/log"
 	"github.com/kirkegaard/terminal-pet/pkg/pet"
 	"github.com/kirkegaard/terminal-pet/pkg/pet/ascii"
 	"github.com/kirkegaard/terminal-pet/pkg/ui/handlers"
@@ -210,7 +210,7 @@ func (m *PetUI) resetToIdle() {
 }
 
 // updateAnimation handles all animation state transitions and frame updates
-func (m *PetUI) updateAnimation(now time.Time) {
+func (m *PetUI) updateAnimation() {
 	// Check if the pet just died
 	if m.pet.IsDead() && !m.inGameOver {
 		m.inGameOver = true
@@ -304,12 +304,6 @@ func (m *PetUI) handlePetMovement() {
 func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	// Check for restart request
-	if m.restartRequested {
-		log.Debug("Restarting game")
-		return m.restartGame()
-	}
-
 	switch msg := msg.(type) {
 	case FrameMsg:
 		// Global ticker handles all animations and state transitions
@@ -333,7 +327,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			now := time.Now()
 			m.lastUpdateTime = now
 
-			m.updateAnimation(now)
+			m.updateAnimation()
 
 			m.handlePetMovement()
 
@@ -350,6 +344,11 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.startGlobalTicker()
 
 	case tea.KeyMsg:
+		// Check for restart request
+		if m.restartRequested {
+			return m.restartGame()
+		}
+
 		// Handle game over screen if active
 		if m.inGameOver {
 			newCursor, shouldRestart := handlers.HandleGameOver(msg.String(), m.gameOverCursor)
@@ -562,22 +561,17 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle rename mode input
 		case m.inRenameMode:
 			switch msg.String() {
-			// Q is already handled by the Quit key binding above
-			// ESC is already handled above
 			case "enter", "return":
-				// Confirm rename
 				if len(m.newName) > 0 {
 					m.pet.Name = m.newName
 					m.inRenameMode = false
 					m.newName = ""
 				}
 			case "backspace":
-				// Delete last character
 				if len(m.newName) > 0 {
 					m.newName = m.newName[:len(m.newName)-1]
 				}
 			default:
-				// Only accept printable characters and limit to reasonable length
 				if len(msg.String()) == 1 && len(m.newName) < 20 {
 					r := []rune(msg.String())[0]
 					if unicode.IsPrint(r) {
@@ -585,7 +579,7 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			// Always return the tick command to keep the cursor blinking
+
 			return m, m.startGlobalTicker()
 
 		case key.Matches(msg, m.keys.Action):
@@ -618,39 +612,30 @@ func (m *PetUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				return m, nil
 			} else {
-				// Set the selected action for highlighting
 				m.selectedAction = m.cursor
 				m.selectedTime = time.Now()
 
 				// If pet is sleeping (lights off), only allow toggling lights or quitting
-				if !m.pet.LightsOn && m.cursor != 5 && m.cursor != 6 { // 5 is Toggle Lights, 6 is Quit
-					// Pet is sleeping, can't perform other actions
+				// 5 is Toggle Lights, 6 is Quit
+				if !m.pet.LightsOn && m.cursor != 5 && m.cursor != 6 {
 					return m, nil
 				}
 
 				// Regular action handling if not in food submenu
 				if m.cursor == 0 { // Feed
-					// Show food submenu instead of food select screen
 					m.showFoodSubmenu = true
-					m.foodSubmenuCursor = 0 // Reset to first option
+					m.foodSubmenuCursor = 0
 				} else if m.cursor == 1 { // Clean
 					m.pet.Clean()
-					// Could add a cleaning animation here in the future
 				} else if m.cursor == 2 { // Play
-					// Start the game with proper timer initialization
 					return m.startGame()
 				} else if m.cursor == 3 { // Medicine
 					m.pet.GiveMedicine()
-					// Could add a medicine animation here in the future
 				} else if m.cursor == 4 { // Rename
-					// Implement rename functionality
 					m.inRenameMode = true
 				} else if m.cursor == 5 { // Toggle Lights
-					// Implement toggle lights functionality
 					m.pet.ToggleLights()
 				} else if m.cursor == 6 { // Quit
-					// Instead of directly quitting, emit a custom quit message that will allow
-					// parent components to save state before quitting
 					return m, func() tea.Msg { return QuitMsg{} }
 				}
 			}
